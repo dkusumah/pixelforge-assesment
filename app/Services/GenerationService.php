@@ -40,6 +40,7 @@ class GenerationService
                 // Failed generations are never billed
                 $generation->actual_cost = '0.00000000';
                 $generation->provider_cost = '0.00000000';
+                $generation->is_billed = true;
             }
         }
 
@@ -59,10 +60,26 @@ class GenerationService
             $generation->usage = $payload['usage'];
         }
 
-        if ($generation->status === GenerationStatus::Succeeded && !empty($generation->usage) && !empty($generation->rates)) {
+        if ($generation->status === GenerationStatus::Succeeded && !empty($generation->usage) && !empty($generation->rates) && !$generation->is_billed) {
             $costs = $this->pricingService->calculateActualCost($generation->usage, $generation->rates);
             $generation->provider_cost = $costs['provider_cost'];
             $generation->actual_cost = $costs['user_cost'];
+            $generation->is_billed = true;
+
+            // Deduct user balance in exact decimals
+            $user = $generation->user;
+            if ($user) {
+                $currentBalance = (string) $user->balance;
+                $costToDeduct = (string) $costs['user_cost'];
+                $newBalance = bcsub($currentBalance, $costToDeduct, 9);
+
+                // Floor at 0.00000000 if cost exceeded available balance
+                if (bccomp($newBalance, '0.00000000', 9) < 0) {
+                    $newBalance = '0.00000000';
+                }
+
+                $user->update(['balance' => $newBalance]);
+            }
         }
 
         if (isset($payload['started_at']) && $payload['started_at'] !== null) {

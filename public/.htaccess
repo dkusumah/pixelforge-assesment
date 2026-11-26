@@ -5,6 +5,10 @@
 
     RewriteEngine On
 
+    # Prevent direct index.php URL access
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s/+index\.php[/?\s] [NC]
+    RewriteRule ^index\.php - [F,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
