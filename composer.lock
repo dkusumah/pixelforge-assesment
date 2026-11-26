@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0a353bf846400731814569a379869cad",
+    "content-hash": "4caba220c4c2659fa208b944778b7b98",
     "packages": [
         {
             "name": "brick/math",
@@ -6793,6 +6793,75 @@
                 "source": "https://github.com/laravel/breeze"
             },
             "time": "2026-05-14T16:54:25+00:00"
+        },
+        {
+            "name": "laravel/cloud-cli",
+            "version": "v0.7.10",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/laravel/cloud-cli.git",
+                "reference": "b01180e1eb0c3b98dd9ddec181440060a34e233b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/laravel/cloud-cli/zipball/b01180e1eb0c3b98dd9ddec181440060a34e233b",
+                "reference": "b01180e1eb0c3b98dd9ddec181440060a34e233b",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "illuminate/http": "^13.0",
+                "illuminate/translation": "^13.0",
+                "illuminate/validation": "^13.0",
+                "laravel-zero/framework": "^13.0",
+                "laravel-zero/phar-updater": "^1.4",
+                "laravel/agent-detector": "^2.0",
+                "laravel/pint": "^1.25.1",
+                "mockery/mockery": "^1.6.12",
+                "pestphp/pest": "^3.8.4|^4.1.2",
+                "php-parallel-lint/php-console-highlighter": "^1.0",
+                "phpstan/phpstan": "^2.1",
+                "saloonphp/cache-plugin": "^3.1",
+                "saloonphp/pagination-plugin": "^2.3",
+                "saloonphp/saloon": "^4.0",
+                "spatie/laravel-data": "^4.19"
+            },
+            "suggest": {
+                "ext-sodium": "Required to create and update secrets"
+            },
+            "bin": [
+                "builds/cloud"
+            ],
+            "type": "project",
+            "autoload": {
+                "psr-4": {
+                    "App\\": "app/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Taylor Otwell",
+                    "email": "taylor@laravel.com"
+                }
+            ],
+            "description": "CLI to interact with Laravel Cloud",
+            "homepage": "https://cloud.laravel.com",
+            "keywords": [
+                "cli",
+                "cloud",
+                "laravel"
+            ],
+            "support": {
+                "issues": "https://github.com/laravel/cloud-cli/issues",
+                "source": "https://github.com/laravel/cloud-cli"
+            },
+            "time": "2026-11-25T16:55:51+00:00"
         },
         {
             "name": "laravel/mcp",
