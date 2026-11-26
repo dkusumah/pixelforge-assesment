@@ -1,0 +1,63 @@
+# Pixelforge Assessment - Cline Rules & Project Guidelines
+
+## Project Overview
+This repository contains a full-stack image-generation web application integrating with the Pixelforge API (an asynchronous AI image provider simulation).
+- **Backend**: Laravel 12 on PHP 8.5
+- **Database**: SQLite (`database/database.sqlite`)
+- **Frontend**: Inertia.js v2, Vue 3 (Composition API `<script setup lang="ts">`), TypeScript, Tailwind CSS v3
+- **Authentication**: Laravel Breeze (Inertia + Vue stack)
+
+---
+
+## Critical Business & Financial Logic
+
+### 1. Pricing & Exact Decimals (Zero Floating-Point Arithmetic)
+- Pixelforge costs are priced per 1M tokens:
+  - Input text tokens: $5.00 / 1M
+  - Input image tokens: $10.00 / 1M (765 tokens per reference image)
+  - Output tokens: $40.00 / 1M (determined by quality & size matrix)
+  - Reasoning tokens: $12.50 / 1M (bounded by quality)
+- **Customer Pricing**: Users pay Pixelforge's cost **plus a 25% markup** (`provider_cost * 1.25`).
+- **Precision**: Money is ALWAYS calculated and stored as an exact decimal string to 9 decimal places (`0.000000000`). NEVER use PHP native floats for token costs or charges. Always use `bcmath` (`bcmul`, `bcdiv`, `bcadd`, `bcsub`, `bccomp`) with scale 9.
+- **Failed Generations**: Generations that fail (`status === 'failed'`) are NEVER billed (`actual_cost = '0.000000000'`, `provider_cost = '0.000000000'`).
+
+### 2. Webhooks & Idempotency
+- **Endpoint**: `POST /webhooks/pixelforge`
+- **Signature Verification**:
+  - Raw body verification against header `Pixelforge-Signature: t=<unix_timestamp>,v1=<signature>`.
+  - Signature is HMAC-SHA256 of `{$timestamp}.{$rawPayload}` keyed with `config('services.pixelforge.webhook_secret')`.
+  - Validate in constant time using `hash_equals` and reject timestamps older or newer than 300 seconds.
+- **Deduplication**: Webhooks arrive at least once. Deduplicate strictly by `event_id` (`evt_...`) via `webhook_events` table before acting. Return `204 No Content` for duplicate events.
+- **Out-of-order Delivery**: Succeeded and failed statuses are final. Never let a late or retried `generation.processing` webhook revert a terminal generation state (`succeeded` or `failed`).
+- **Early Arrival**: A webhook may arrive before `POST /v1/generations` returns. Always include an `idempotency_key` (UUID) in the creation request metadata and reconcile by both `pixelforge_id` and `idempotency_key`.
+
+### 3. Rate Limits & Transient Failures
+- Per-account limits: 60 req/min, 3 concurrent queued/processing, 500 per UTC day.
+- Transient errors (`rate_limit_exceeded`, `concurrency_limit_exceeded`, `overloaded` 503): Respect `Retry-After` header and retry with bounded exponential backoff using the generation's `Idempotency-Key`.
+- Daily limit (`daily_limit_exceeded`): Non-retryable until next UTC day.
+
+---
+
+## Code Style & Architecture Conventions
+
+### PHP Rules
+- Always use curly braces for control structures, even for single-line bodies.
+- Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`.
+- Use explicit return type declarations and type hints for all parameters: `function isAccessible(User $user, ?string $path = null): bool`.
+- Use TitleCase for Enum keys: `Square`, `Landscape`, `Portrait`, `Queued`, `Succeeded`.
+- Prefer PHPDoc blocks with array shape type definitions over inline comments.
+
+### Frontend (Vue 3 + Inertia + TypeScript)
+- Use Vue 3 `<script setup lang="ts">`.
+- Use strong TypeScript interfaces in `resources/js/types/` for all generation, pricing, and user objects.
+- Tailwind CSS for all responsive UI components.
+- Do not create custom verification scripts; use automated PHPUnit feature tests.
+
+---
+
+## Useful Commands
+- Run backend tests: `php artisan test`
+- Run frontend build: `npm run build`
+- Run frontend dev server: `npm run dev`
+- Run migrations: `php artisan migrate`
+- Route inspection: `php artisan route:list`
