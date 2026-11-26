@@ -29,4 +29,14 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Generations requested by the user.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\Generation, $this>
+     */
+    public function generations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Generation::class);
+    }
 }

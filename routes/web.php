@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\PixelforgeWebhookController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
+Route::post('/webhooks/pixelforge', PixelforgeWebhookController::class)->name('webhooks.pixelforge');
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
