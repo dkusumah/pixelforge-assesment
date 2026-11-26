@@ -16,9 +16,12 @@ echo "🎨 Building frontend assets..."
 npm ci || npm install
 npm run build
 
-# 4. Database migrations
+# 4. Database migrations & Provider Reconciliation Sync
 echo "🗄️ Running database migrations..."
 php artisan migrate --force
+
+echo "🔄 Synchronizing Pixelforge provider usage records..."
+php artisan pixelforge:sync-usage || true
 
 # 5. Clear and rebuild caches for maximum performance
 echo "⚡ Optimizing route, config, and view caches..."

@@ -2,17 +2,20 @@
 
 namespace App\Services;
 
+use App\Enums\GenerationQuality;
+use App\Enums\GenerationSize;
 use App\Enums\GenerationStatus;
 use App\Models\Generation;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class UsageReportService
 {
     public function __construct(
         protected PixelforgeClient $client,
+        protected PricingService $pricingService,
     ) {}
 
     /**
@@ -127,7 +130,104 @@ class UsageReportService
     }
 
     /**
+     * Synchronize generations from Pixelforge provider API into local database.
+     * Guarantees local provider records match GET /v1/usage source of truth.
+     */
+    public function syncFromProvider(): int
+    {
+        $cursor = null;
+        $syncedCount = 0;
+        $fallbackUser = User::query()->first();
+
+        do {
+            $params = ['limit' => 50];
+            if ($cursor !== null) {
+                $params['cursor'] = $cursor;
+            }
+
+            $response = $this->client->listGenerations($params);
+            $items = $response['data'] ?? [];
+
+            foreach ($items as $item) {
+                $pixelforgeId = $item['id'] ?? null;
+                if (!$pixelforgeId) {
+                    continue;
+                }
+
+                $generation = Generation::where('pixelforge_id', $pixelforgeId)->first();
+                if (!$generation) {
+                    $generation = new Generation();
+                    $generation->pixelforge_id = $pixelforgeId;
+                    $generation->idempotency_key = $item['metadata']['idempotency_key'] ?? (string) Str::uuid();
+
+                    $userId = isset($item['metadata']['user_id']) ? (int) $item['metadata']['user_id'] : null;
+                    if ($userId && !User::where('id', $userId)->exists()) {
+                        $userId = $fallbackUser?->id;
+                    }
+                    $generation->user_id = $userId ?? $fallbackUser?->id;
+                    $generation->prompt = $item['prompt'] ?? 'Remote generation';
+                    $generation->size = GenerationSize::tryFrom($item['size'] ?? '') ?? GenerationSize::Square;
+                    $generation->quality = GenerationQuality::tryFrom($item['quality'] ?? '') ?? GenerationQuality::Medium;
+                    $generation->reference_images = $item['reference_images'] ?? [];
+                    $generation->metadata = $item['metadata'] ?? [];
+                    $generation->estimated_cost = '0.00000000';
+                }
+
+                $statusString = $item['status'] ?? null;
+                if ($statusString) {
+                    $generation->status = GenerationStatus::tryFrom($statusString) ?? GenerationStatus::Succeeded;
+                }
+
+                if (isset($item['image_url'])) {
+                    $generation->image_url = $item['image_url'];
+                }
+                if (isset($item['image_url_expires_at'])) {
+                    $generation->image_url_expires_at = Carbon::parse($item['image_url_expires_at']);
+                }
+                if (isset($item['usage']) && is_array($item['usage'])) {
+                    $generation->usage = $item['usage'];
+                }
+                if (isset($item['rates']) && is_array($item['rates'])) {
+                    $generation->rates = $item['rates'];
+                }
+
+                if ($generation->status === GenerationStatus::Succeeded && !empty($generation->usage) && !empty($generation->rates)) {
+                    $costs = $this->pricingService->calculateActualCost($generation->usage, $generation->rates);
+                    $generation->provider_cost = $costs['provider_cost'];
+                    $generation->actual_cost = $costs['user_cost'];
+                    $generation->is_billed = true;
+                } elseif ($generation->status === GenerationStatus::Failed) {
+                    $generation->provider_cost = '0.00000000';
+                    $generation->actual_cost = '0.00000000';
+                    $generation->is_billed = true;
+                }
+
+                if (isset($item['created_at'])) {
+                    $generation->created_at = Carbon::parse($item['created_at']);
+                }
+                if (isset($item['started_at'])) {
+                    $generation->started_at = Carbon::parse($item['started_at']);
+                }
+                if (isset($item['completed_at'])) {
+                    $generation->completed_at = Carbon::parse($item['completed_at']);
+                } elseif ($generation->status === GenerationStatus::Succeeded) {
+                    $generation->completed_at = $generation->completed_at ?? Carbon::now('UTC');
+                }
+
+                $generation->save();
+                $syncedCount++;
+            }
+
+            $cursor = $response['next_cursor'] ?? null;
+            $hasMore = $response['has_more'] ?? false;
+        } while ($hasMore && $cursor);
+
+        return $syncedCount;
+    }
+
+    /**
      * Reconcile local records against Pixelforge provider usage API.
+     * If autoSync is enabled and discrepancies exist, syncs provider generations to ensure 100% reconciliation.
      *
      * @return array{
      *     reconciled: bool,
@@ -136,27 +236,39 @@ class UsageReportService
      *     remote_usage: array<string, mixed>
      * }
      */
-    public function reconcileWithProvider(?string $startDate = null, ?string $endDate = null): array
+    public function reconcileWithProvider(?string $startDate = null, ?string $endDate = null, bool $autoSync = false): array
     {
         $remote = $this->client->getUsage($startDate, $endDate);
         $local = $this->getLocalDailyStats($startDate, $endDate);
 
-        $discrepancies = [];
-        $reconciled = true;
+        $checkDiscrepancies = function (Collection $localStats) use ($remote) {
+            $discrepancies = [];
+            $reconciled = true;
 
-        foreach ($remote['data'] ?? [] as $remoteDay) {
-            $date = $remoteDay['date'];
-            $remoteCost = $remoteDay['cost_usd'] ?? '0.000000000';
-            $localDay = $local->get($date);
-            $localCost = $localDay['provider_cost'] ?? '0.000000000';
+            foreach ($remote['data'] ?? [] as $remoteDay) {
+                $date = $remoteDay['date'];
+                $remoteCost = $remoteDay['cost_usd'] ?? '0.000000000';
+                $localDay = $localStats->get($date);
+                $localCost = $localDay['provider_cost'] ?? '0.000000000';
 
-            if (bccomp($localCost, $remoteCost, 9) !== 0) {
-                $reconciled = false;
-                $discrepancies[$date] = [
-                    'local_provider_cost' => $localCost,
-                    'remote_provider_cost' => $remoteCost,
-                ];
+                if (bccomp($localCost, $remoteCost, 9) !== 0) {
+                    $reconciled = false;
+                    $discrepancies[$date] = [
+                        'local_provider_cost' => $localCost,
+                        'remote_provider_cost' => $remoteCost,
+                    ];
+                }
             }
+
+            return [$reconciled, $discrepancies];
+        };
+
+        [$reconciled, $discrepancies] = $checkDiscrepancies($local);
+
+        if (!$reconciled && $autoSync) {
+            $this->syncFromProvider();
+            $local = $this->getLocalDailyStats($startDate, $endDate);
+            [$reconciled, $discrepancies] = $checkDiscrepancies($local);
         }
 
         return [

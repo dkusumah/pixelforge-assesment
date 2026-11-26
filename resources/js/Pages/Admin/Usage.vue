@@ -30,6 +30,7 @@ const props = defineProps<{
 
 const startDate = ref(props.filters.start_date);
 const endDate = ref(props.filters.end_date);
+const isSyncing = ref(false);
 
 const formatUsd = (val?: string | null) => {
     if (!val) return '$0.000000';
@@ -44,6 +45,20 @@ const filterDateRange = () => {
             end_date: endDate.value,
         },
         { preserveState: true }
+    );
+};
+
+const syncWithProvider = () => {
+    isSyncing.value = true;
+    router.post(
+        route('admin.usage.sync'),
+        {},
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                isSyncing.value = false;
+            },
+        }
     );
 };
 
@@ -69,26 +84,41 @@ const totalLocalGenerations = props.dailyStats.reduce((acc, d) => acc + d.genera
                     </p>
                 </div>
 
-                <!-- Date Range Filter -->
-                <form @submit.prevent="filterDateRange" class="flex items-center gap-2">
-                    <input
-                        type="date"
-                        v-model="startDate"
-                        class="rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
-                    />
-                    <span class="text-xs text-gray-400">to</span>
-                    <input
-                        type="date"
-                        v-model="endDate"
-                        class="rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
-                    />
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Date Range Filter -->
+                    <form @submit.prevent="filterDateRange" class="flex items-center gap-2">
+                        <input
+                            type="date"
+                            v-model="startDate"
+                            class="rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
+                        />
+                        <span class="text-xs text-gray-400">to</span>
+                        <input
+                            type="date"
+                            v-model="endDate"
+                            class="rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
+                        />
+                        <button
+                            type="submit"
+                            class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 shadow-sm"
+                        >
+                            Filter
+                        </button>
+                    </form>
+
+                    <!-- Direct Sync Button -->
                     <button
-                        type="submit"
-                        class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
+                        type="button"
+                        @click="syncWithProvider"
+                        :disabled="isSyncing"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm disabled:opacity-50"
                     >
-                        Filter
+                        <svg :class="{ 'animate-spin': isSyncing }" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span>{{ isSyncing ? 'Syncing...' : 'Sync Provider' }}</span>
                     </button>
-                </form>
+                </div>
             </div>
         </template>
 
@@ -97,33 +127,67 @@ const totalLocalGenerations = props.dailyStats.reduce((acc, d) => acc + d.genera
                 <!-- Reconciliation Status Banner -->
                 <div
                     :class="reconciled ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-800' : 'border-rose-200 bg-rose-50 dark:bg-rose-950/40 dark:border-rose-800'"
-                    class="rounded-2xl border p-4 sm:p-6 flex items-start sm:items-center justify-between gap-4 shadow-sm"
+                    class="rounded-2xl border p-4 sm:p-6 shadow-sm space-y-4"
                 >
-                    <div class="flex items-center space-x-3">
-                        <div
-                            :class="reconciled ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60' : 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/60'"
-                            class="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                        >
-                            <svg v-if="reconciled" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                            </svg>
-                            <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div class="flex items-center space-x-3">
+                            <div
+                                :class="reconciled ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60' : 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/60'"
+                                class="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                            >
+                                <svg v-if="reconciled" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                                <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-gray-900 dark:text-white">
+                                    {{ reconciled ? 'Reconciliation Verified (100% Match)' : 'Reconciliation Discrepancy Detected' }}
+                                </h3>
+                                <p class="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+                                    {{ reconciled
+                                        ? "Local provider records match Pixelforge's official GET /v1/usage source of truth for API key."
+                                        : "Local provider records differ from Pixelforge GET /v1/usage source of truth. Synchronize with provider to import missing records." }}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 class="text-sm font-bold text-gray-900 dark:text-white">
-                                {{ reconciled ? 'Reconciliation Verified (100% Match)' : 'Reconciliation Discrepancy Detected' }}
-                            </h3>
-                            <p class="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
-                                Local provider records match Pixelforge's official GET /v1/usage source of truth for API key.
-                            </p>
+                        <div class="flex items-center gap-4 self-end sm:self-auto">
+                            <button
+                                @click="syncWithProvider"
+                                :disabled="isSyncing"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                            >
+                                <svg :class="{ 'animate-spin': isSyncing }" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span>{{ isSyncing ? 'Syncing...' : 'Sync from Pixelforge' }}</span>
+                            </button>
+                            <div class="text-right">
+                                <div class="text-xs text-gray-500 dark:text-gray-400">Pixelforge Reported Total:</div>
+                                <div class="text-sm font-mono font-bold text-gray-900 dark:text-white">
+                                    {{ formatUsd(remoteUsage?.total?.cost_usd) }}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="text-right">
-                        <div class="text-xs text-gray-500 dark:text-gray-400">Pixelforge Reported Total:</div>
-                        <div class="text-sm font-mono font-bold text-gray-900 dark:text-white">
-                            {{ formatUsd(remoteUsage?.total?.cost_usd) }}
+
+                    <!-- Discrepancy Details Box when not reconciled -->
+                    <div v-if="!reconciled && Object.keys(discrepancies).length > 0" class="pt-3 border-t border-rose-200 dark:border-rose-900/50">
+                        <div class="text-xs font-bold text-rose-800 dark:text-rose-300 mb-2">Discrepant Dates Breakdown:</div>
+                        <div class="space-y-1.5">
+                            <div
+                                v-for="(disc, date) in discrepancies"
+                                :key="date"
+                                class="text-xs font-mono flex items-center justify-between bg-white/70 dark:bg-gray-900/60 px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900/60"
+                            >
+                                <span class="font-bold text-gray-800 dark:text-gray-200">{{ date }}</span>
+                                <div class="flex items-center gap-4 text-gray-600 dark:text-gray-400">
+                                    <span>Local: <strong class="text-rose-600 dark:text-rose-400">{{ formatUsd(disc.local_provider_cost) }}</strong></span>
+                                    <span>Remote (GET /v1/usage): <strong class="text-emerald-600 dark:text-emerald-400">{{ formatUsd(disc.remote_provider_cost) }}</strong></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\UsageReportService;
 use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,7 +23,7 @@ class AdminUsageController extends Controller
         $startDate = $request->query('start_date', Carbon::now('UTC')->subDays(14)->toDateString());
         $endDate = $request->query('end_date', Carbon::now('UTC')->toDateString());
 
-        $reconciliation = $this->usageReportService->reconcileWithProvider($startDate, $endDate);
+        $reconciliation = $this->usageReportService->reconcileWithProvider($startDate, $endDate, autoSync: true);
         $userStats = $this->usageReportService->getUserStats($startDate, $endDate);
 
         return Inertia::render('Admin/Usage', [
@@ -36,5 +37,15 @@ class AdminUsageController extends Controller
                 'end_date' => $endDate,
             ],
         ]);
+    }
+
+    /**
+     * Manually synchronize generation records from Pixelforge provider.
+     */
+    public function sync(): RedirectResponse
+    {
+        $count = $this->usageReportService->syncFromProvider();
+
+        return redirect()->back()->with('success', "Successfully synced {$count} generation records from Pixelforge provider.");
     }
 }
