@@ -74,7 +74,7 @@ const submitTopUp = () => {
                             </div>
 
                             <!-- Navigation Links -->
-                            <div class="hidden space-x-6 sm:-my-px sm:ms-8 sm:flex">
+                            <div class="hidden space-x-1 sm:-my-px sm:ms-8 sm:flex">
                                 <NavLink
                                     :href="route('generations.index')"
                                     :active="route().current('generations.index')"
